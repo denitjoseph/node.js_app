@@ -41,7 +41,7 @@ pipeline {
                         echo "Installing Java..."
 
                         apt-get update
-                        apt-get install -y openjdk17-jre
+                        apt-get install -y openjdk-17-jre
 
                         echo "Java version:"
                         java -version

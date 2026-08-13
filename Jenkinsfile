@@ -27,7 +27,7 @@ pipeline {
           sh '''
             apk add --no-cache openjdk17-jre
             cd node-app
-            npx @sonarsource/sonar-scanner-cli \
+            npx sonarqube-scanner \
               -Dsonar.projectKey=node-express-app \
               -Dsonar.projectName="Node Express App" \
               -Dsonar.sources=. \

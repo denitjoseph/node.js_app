@@ -32,7 +32,7 @@ pipeline {
                 sh '''
                     cd node-app
 
-                    echo "Installing Node dependencies..."
+                    echo "Installing dependencies..."
                     npm ci
 
                     echo "Running tests..."
@@ -78,7 +78,7 @@ pipeline {
                 script {
 
                     sh '''
-                        echo "Installing latest Docker CLI..."
+                        echo "Installing Docker CLI..."
 
                         apt-get update
 
@@ -118,10 +118,10 @@ pipeline {
                         echo "Docker image built successfully."
                     '''
 
+                    echo "Pushing Docker image to Docker Hub..."
+
                     def dockerImage =
                         docker.image("${DOCKER_IMAGE}:${BUILD_NUMBER}")
-
-                    echo "Pushing Docker image to Docker Hub..."
 
                     docker.withRegistry(
                         'https://index.docker.io/v1/',
@@ -144,7 +144,7 @@ pipeline {
 
                 withCredentials([
                     usernamePassword(
-                        credentialsId: 'git-hub',
+                        credentialsId: 'github',
                         usernameVariable: 'GITHUB_USERNAME',
                         passwordVariable: 'GITHUB_TOKEN'
                     )
@@ -156,7 +156,7 @@ pipeline {
                         apt-get update
                         apt-get install -y git
 
-                        echo "Cloning repository..."
+                        echo "Cloning GitHub repository..."
 
                         rm -rf repo-temp
 
@@ -181,7 +181,7 @@ pipeline {
 
                         grep "image:" node-app-manifests/deployment.yml
 
-                        echo "Committing changes..."
+                        echo "Committing deployment change..."
 
                         git add node-app-manifests/deployment.yml
 
@@ -189,7 +189,7 @@ pipeline {
                             -m "Update Node.js app image to ${BUILD_NUMBER} [skip ci]" \
                             || echo "No changes to commit"
 
-                        echo "Pushing deployment update..."
+                        echo "Pushing deployment update to GitHub..."
 
                         git push origin main
 

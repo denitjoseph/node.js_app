@@ -7,12 +7,19 @@ pipeline {
         }
     }
 
+    environment {
+        DOCKER_IMAGE = "denitjoseph/ultimate-cicd"
+        GIT_REPO_NAME = "node.js_app"
+        GIT_USER_NAME = "denitjoseph"
+    }
+
     stages {
 
         stage('Checkout') {
             steps {
+                echo 'Starting build process...'
+
                 sh '''
-                    echo "Starting build process..."
                     echo "Workspace:"
                     pwd
                     ls -la
@@ -25,7 +32,7 @@ pipeline {
                 sh '''
                     cd node-app
 
-                    echo "Installing dependencies..."
+                    echo "Installing Node dependencies..."
                     npm ci
 
                     echo "Running tests..."
@@ -37,6 +44,7 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube') {
+
                     sh '''
                         echo "Installing Java..."
 
@@ -49,6 +57,8 @@ pipeline {
                         cd node-app
 
                         echo "Running SonarQube analysis..."
+
+                        export SONAR_JAVA_PATH=/usr/bin/java
 
                         npx sonarqube-scanner \
                           -Dsonar.projectKey=node-express-app \
@@ -63,32 +73,55 @@ pipeline {
 
         stage('Build and Push Docker Image') {
 
-            environment {
-                DOCKER_IMAGE = "denitjoseph/ultimate-cicd:${BUILD_NUMBER}"
-            }
-
             steps {
+
                 script {
 
-                    echo "Installing Docker CLI..."
-
                     sh '''
+                        echo "Installing latest Docker CLI..."
+
                         apt-get update
-                        apt-get install -y docker.io
-                    '''
 
-                    echo "Building Docker image..."
+                        apt-get install -y \
+                            ca-certificates \
+                            curl
 
-                    sh '''
+                        install -m 0755 -d /etc/apt/keyrings
+
+                        curl -fsSL \
+                            https://download.docker.com/linux/debian/gpg \
+                            -o /etc/apt/keyrings/docker.asc
+
+                        chmod a+r /etc/apt/keyrings/docker.asc
+
+                        echo \
+                          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+                          $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+                          > /etc/apt/sources.list.d/docker.list
+
+                        apt-get update
+
+                        apt-get install -y docker-ce-cli
+
+                        echo "Docker version:"
+                        docker --version
+
+                        echo "Docker client/server version:"
+                        docker version
+
+                        echo "Building Docker image..."
+
                         docker build \
-                          -t ${DOCKER_IMAGE} \
-                          node-app
-                    '''
+                            -t ${DOCKER_IMAGE}:${BUILD_NUMBER} \
+                            node-app
 
-                    echo "Pushing Docker image to Docker Hub..."
+                        echo "Docker image built successfully."
+                    '''
 
                     def dockerImage =
-                        docker.image("${DOCKER_IMAGE}")
+                        docker.image("${DOCKER_IMAGE}:${BUILD_NUMBER}")
+
+                    echo "Pushing Docker image to Docker Hub..."
 
                     docker.withRegistry(
                         'https://index.docker.io/v1/',
@@ -99,16 +132,13 @@ pipeline {
 
                         dockerImage.push('latest')
                     }
+
+                    echo "Docker image pushed successfully."
                 }
             }
         }
 
         stage('Update Deployment File') {
-
-            environment {
-                GIT_REPO_NAME = 'node.js_app'
-                GIT_USER_NAME = 'denitjoseph'
-            }
 
             steps {
 
@@ -126,13 +156,13 @@ pipeline {
                         apt-get update
                         apt-get install -y git
 
-                        echo "Cloning GitHub repository..."
+                        echo "Cloning repository..."
 
                         rm -rf repo-temp
 
                         git clone \
-                          https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git \
-                          repo-temp
+                            https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git \
+                            repo-temp
 
                         cd repo-temp
 
@@ -144,28 +174,45 @@ pipeline {
                         echo "Updating Kubernetes deployment image..."
 
                         sed -i \
-                          "s|image: .*|image: denitjoseph/ultimate-cicd:${BUILD_NUMBER}|g" \
-                          node-app-manifests/deployment.yml
+                            "s|image: .*|image: denitjoseph/ultimate-cicd:${BUILD_NUMBER}|g" \
+                            node-app-manifests/deployment.yml
 
                         echo "Updated deployment image:"
 
-                        grep "image:" \
-                          node-app-manifests/deployment.yml
+                        grep "image:" node-app-manifests/deployment.yml
 
-                        echo "Committing deployment change..."
+                        echo "Committing changes..."
 
                         git add node-app-manifests/deployment.yml
 
                         git commit \
-                          -m "Update Node.js app image tag to ${BUILD_NUMBER} [skip ci]" \
-                          || echo "No changes to commit"
+                            -m "Update Node.js app image to ${BUILD_NUMBER} [skip ci]" \
+                            || echo "No changes to commit"
 
-                        echo "Pushing deployment change to GitHub..."
+                        echo "Pushing deployment update..."
 
                         git push origin main
+
+                        echo "Deployment file updated successfully."
                     '''
                 }
             }
+        }
+    }
+
+    post {
+
+        success {
+            echo '======================================'
+            echo 'PIPELINE COMPLETED SUCCESSFULLY'
+            echo '======================================'
+        }
+
+        failure {
+            echo '======================================'
+            echo 'PIPELINE FAILED'
+            echo 'Check the stage above for the error.'
+            echo '======================================'
         }
     }
 }
